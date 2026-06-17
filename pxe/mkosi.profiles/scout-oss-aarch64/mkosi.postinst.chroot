@@ -41,6 +41,16 @@ systemctl enable nvidia-imex
 systemctl enable nvidia-fabricmanager
 
 # ============================================================================
+# ENABLE CLOUD-INIT SERVICES
+# ============================================================================
+systemctl enable cloud-init-local.service
+systemctl enable cloud-init.service
+systemctl enable cloud-config.service           
+systemctl enable cloud-final.service
+                                                                                                         
+# Ensure NoCloud is in the search list
+echo "datasource_list: [ NoCloud, None ]" > /etc/cloud/cloud.cfg.d/90_datasource.cfg
+# ============================================================================
 # DAILY UPDATE CHECK
 # ============================================================================
 cp /build-output/check-scout-updates.sh /opt/forge/

@@ -53,10 +53,14 @@ impl FromRequestParts<AppState> for Machine {
 
         // the implementation defaults to a proxied XFF header with the correct IP,
         // and falls back to client IP from socket if not
-        let client_ip = ClientIp::from_request_parts(parts, state)
-            .await
-            .map_err(PxeRequestError::MissingIp)?
-            .0;
+        let client_ip = if let Ok(client_ip) = client_ip::rightmost_x_forwarded_for(&parts.headers) {
+            client_ip
+        } else {
+            ClientIp::from_request_parts(parts, state)
+                .await
+                .map_err(PxeRequestError::MissingIp)?
+                .0
+        };
 
         client
             .get_cloud_init_instructions(tonic::Request::new(CloudInitInstructionsRequest {

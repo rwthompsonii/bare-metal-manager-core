@@ -182,7 +182,7 @@ impl PxeInstructions {
             rpc::MachineArchitecture::X86 => {
                 InstructionGenerator {
                     kernel: "${base-url}/internal/x86_64/scout.efi".to_string(),
-                    command_line: format!("mac={mac_address} console=tty0 console={console},115200 pci=realloc=off iommu=off cli_cmd=auto-detect machine_id={machine_interface_id} server_uri=[api_url] pxe_uri=[pxe_url]"),
+                    command_line: format!("mac={mac_address} console=tty0 console={console},115200 pci=realloc=off iommu=off cli_cmd=auto-detect machine_id={machine_interface_id} server_uri=[api_url] pxe_uri=[pxe_url] cloud_init_url=${{cloudinit-url}}/user-data"),
                     initrd: None,
                 }
             }

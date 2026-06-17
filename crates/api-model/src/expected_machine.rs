@@ -110,9 +110,11 @@ pub struct ExpectedHostNic {
     pub primary: Option<bool>,
 }
 
-// Important : new fields for expected machine should be Optional _and_ #[serde(default)],
+// !!!!!!!!!!!!!!!!!IMPORTANT !!!!!!!!!!
+// new fields for expected machine (and data) should be optional _and_ serde(default),
 // unless you want to go update all the files in each production deployment that autoload
 // the expected machines on api startup
+// !!!!!!!!!!!!!!!!!IMPORTANT !!!!!!!!!!
 #[derive(Clone, Deserialize)]
 pub struct ExpectedMachine {
     #[serde(default)]
@@ -121,7 +123,11 @@ pub struct ExpectedMachine {
     #[serde(flatten)]
     pub data: ExpectedMachineData,
 }
-
+// !!!!!!!!!!!!!!!!!IMPORTANT !!!!!!!!!!
+// new fields for expected machine (and data) should be optional _and_ serde(default),
+// unless you want to go update all the files in each production deployment that autoload
+// the expected machines on api startup
+// !!!!!!!!!!!!!!!!!IMPORTANT !!!!!!!!!!
 #[derive(Clone, Default, Deserialize)] // Do not add Debug here, it contains password
 pub struct ExpectedMachineData {
     pub bmc_username: String,
@@ -135,8 +141,11 @@ pub struct ExpectedMachineData {
     pub metadata: Metadata,
     #[serde(default)]
     pub host_nics: Vec<ExpectedHostNic>,
+    #[serde(default)]
     pub rack_id: Option<RackId>,
+    #[serde(default)]
     pub default_pause_ingestion_and_poweron: Option<bool>,
+    #[serde(default)]
     pub dpf_enabled: Option<bool>,
     /// When set, the API pre-allocates a `machine_interface` for this BMC MAC at this address
     /// (same pattern as expected switches / power shelves) so Site Explorer can reach the BMC
@@ -159,9 +168,11 @@ pub struct ExpectedMachineData {
     #[serde(default)]
     pub host_lifecycle_profile: HostLifecycleProfile,
 }
-// Important : new fields for expected machine (and data) should be optional _and_ serde(default),
+// !!!!!!!!!!!!!!!!!IMPORTANT !!!!!!!!!!
+// new fields for expected machine (and data) should be optional _and_ serde(default),
 // unless you want to go update all the files in each production deployment that autoload
 // the expected machines on api startup
+// !!!!!!!!!!!!!!!!!IMPORTANT !!!!!!!!!!
 
 /// Per-host lifecycle profile for settings that affect state-machine progression.
 /// `Option<bool>` fields support CLI patch semantics (`None` = not specified,

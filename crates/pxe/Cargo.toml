@@ -49,6 +49,7 @@ pin-project-lite = { workspace = true }
 serde = { features = ["derive"], workspace = true }
 tera = { workspace = true }
 tokio = { workspace = true }
+tokio-stream = {version = "0.1.17", features = ["fs"]}
 toml = { workspace = true }
 tonic = { workspace = true }
 tower = { workspace = true }
@@ -56,6 +57,7 @@ tower-http = { features = ["fs"], workspace = true }
 tower-layer = { workspace = true }
 tower-service = { workspace = true }
 uuid = { features = ["v4", "serde"], workspace = true }
+client-ip = "0.1.1"
 
 [build-dependencies]
 carbide-version = { path = "../version" }

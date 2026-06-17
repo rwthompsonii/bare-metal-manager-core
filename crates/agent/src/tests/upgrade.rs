@@ -25,7 +25,7 @@ use axum::routing::{get, post};
 
 use crate::tests::common;
 
-const ROOT_CERT_PATH: &str = "dev/certs/forge_developer_local_only_root_cert_pem";
+const ROOT_CERT_PATH: &str = "dev/certs/forge_root.pem";
 
 #[tokio::test]
 async fn test_upgrade_check() -> eyre::Result<()> {

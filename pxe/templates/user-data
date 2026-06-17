@@ -39,6 +39,7 @@ local artifacts=(
   /doca_container_configs
   /doca_hbn.tar
 )
+
 mkdir -p "${forge_path}"
 for artifact in "${artifacts[@]}"; do
   [ -e "$artifact" ] || { ilog "WARN: $artifact does not exist"; continue; }
@@ -46,72 +47,12 @@ for artifact in "${artifacts[@]}"; do
 done
 chmod a+x "${forge_path}/forge-scout"
 
-local forge_path_debs="${forge_path}/debs"
-ilog "=== Moving deb files to $forge_path_debs"
-mkdir -p "$forge_path_debs"
-for deb in /debs/*.deb; do
-  [ -e "$deb" ] || continue
-  mv -v "$deb" "$forge_path_debs" | while read -r log_line; do ilog "mv: $log_line"; done
-done
-
-# Install nvinit if present
-# TODO: Migrate to deb package
-local nvinit_path="/nvinit_setup"
-if [ -d "$nvinit_path" ]; then
-  mkdir -p /mnt/etc/nvssh
-  chmod 0755 /mnt/etc/nvssh
-
-  # Files to install: src:dest:mode
-  local -a nvinit_files=(
-    "$nvinit_path/etc-nvssh-nvssh-conf:/mnt/etc/nvssh/nvssh.conf:0644"
-    "$nvinit_path/etc-sudoersd-nvssh-sudo:/mnt/etc/sudoers.d/nvssh-sudo:0600"
-    "$nvinit_path/etc-sudoersd-nvssh-sudo-nopasswd:/mnt/etc/sudoers.d/nvssh-sudo-nopasswd:0600"
-    "$nvinit_path/etc-nsswitch-conf:/mnt/etc/nsswitch.conf:0644"
-    "$nvinit_path/etc-pamd-sshd:/mnt/etc/pam.d/sshd:0600"
-    "$nvinit_path/etc-ssh-ngc-users-ca-keys-pem:/mnt/etc/ssh/ngc-users-ca-keys.pem:0644"
-    "$nvinit_path/sbin-nss-exec:/mnt/sbin/nss_exec:0755"
-    "$nvinit_path/usr-bin-nvssh:/mnt/usr/bin/nvssh:0755"
-    "$nvinit_path/etc-ssh-sshd-config:/mnt/etc/ssh/sshd_config:0644"
-  )
-
-  for entry in "${nvinit_files[@]}"; do
-    IFS=':' read -r src dest mode <<< "$entry"
-    [ -f "$src" ] || { ilog "WARN: $src does not exist"; continue; }
-    mv -v "$src" "$dest" | while read -r log_line; do ilog "mv: $log_line"; done
-    chmod "$mode" "$dest"
-    chroot /mnt chown root:root "${dest#/mnt}"
-  done
-
-  # Groups to create: name:gid (empty gid - auto-assign)
-  local -a nvinit_groups=(
-    "nvssh-sudo-nopasswd:959"
-    "nvssh-sudo:949"
-    "ngc-automation:"
-    "ngc:"
-    "nsv:"
-  )
-
-  for entry in "${nvinit_groups[@]}"; do
-    IFS=':' read -r name gid <<< "$entry"
-    ilog "Creating group: $name"
-    if [ -n "$gid" ]; then
-      chroot /mnt groupadd --gid "$gid" "$name"
-    else
-      chroot /mnt groupadd "$name"
-    fi
-  done
-fi
-# End of nvinit setup
-
-local forge_path_chroot_debs="${forge_path_debs#/mnt}"
-ilog "=== Installing debs from $forge_path_chroot_debs:"
-chroot /mnt chown -R root:root "$forge_path_chroot_debs"
-chroot /mnt dpkg -R -i "$forge_path_chroot_debs" 2>&1 | while read -r log_line; do ilog "dpkg: $log_line"; done
-
 cat << \EOF > /mnt/etc/NetworkManager/conf.d/99-carbide.conf
 [main]
 dns=systemd-resolved
 EOF
+
+{{ custom_cloud_init_downloads }}
 
 cat << \EOF > /mnt/var/lib/cloud/seed/nocloud-net/user-data
 #cloud-config
@@ -119,7 +60,6 @@ timezone: "Etc/UTC"
 fqdn: {{ hostname }}
 manage_etc_hosts: true
 users:
-  # The default `ubuntu` user is left in place for now; once a service user is in use, we can remove it entirely
   - name: ubuntu
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL
@@ -202,8 +142,18 @@ write_files:
       hwclock --systohc
       /usr/bin/bfrec --capsule /lib/firmware/mellanox/boot/capsule/efi_sbkeysync.cap || true
       /usr/bin/bfcfg
+
+      # download the forge root cert so we can talk to the api server
       ip vrf exec mgmt curl --retry 5 --retry-all-errors -v -o /opt/forge/forge_root.pem {{ pxe_url }}/api/v0/tls/root_ca
-      echo "downloaded forge root cert"
+      echo "Downloaded Forge root cert"
+
+      # make sure the necessary packages we depend on in scout actually are installed
+      ip vrf exec mgmt apt update
+      ip vrf exec mgmt apt install -y libtss2-dev
+
+      {{ custom_cloud_init_execute }}
+
+      # start setting up networking
       /usr/bin/mlxprivhost -d /dev/mst/mt*_pciconf0 r --disable_rshim --disable_tracer --disable_counter_rd --disable_port_owner
       bash -c '/usr/bin/mlxconfig -y -d /dev/mst/mt*_pciconf0 s SRIOV_EN=True NUM_OF_VFS={{ num_of_vfs }} HIDE_PORT2_PF=True NUM_OF_PF=1'
       bash -c '/usr/bin/mlxconfig -y -d /dev/mst/mt*_pciconf0 set LINK_TYPE_P1=2 LINK_TYPE_P2=2' || true # not all BF2s have VPI so ignore the error if it does not

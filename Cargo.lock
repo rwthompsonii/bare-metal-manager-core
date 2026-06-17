@@ -514,7 +514,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8ba1af5b620232acf37f2eb6d22151ea465491e0b4c25f552d1990f64ec5a67"
 dependencies = [
  "axum",
- "client-ip",
+ "client-ip 0.2.1",
  "serde",
 ]
 
@@ -2304,6 +2304,7 @@ dependencies = [
  "carbide-uuid",
  "carbide-version",
  "clap",
+ "client-ip 0.1.1",
  "http-body",
  "metrics",
  "metrics-exporter-prometheus",
@@ -2313,6 +2314,7 @@ dependencies = [
  "tempfile",
  "tera",
  "tokio",
+ "tokio-stream",
  "toml 1.1.2+spec-1.1.0",
  "tonic",
  "tower",
@@ -2980,6 +2982,15 @@ name = "clap_lex"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
+
+[[package]]
+name = "client-ip"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31211fc26899744f5b22521fdc971e5f3875991d8880537537470685a0e9552d"
+dependencies = [
+ "http",
+]
 
 [[package]]
 name = "client-ip"

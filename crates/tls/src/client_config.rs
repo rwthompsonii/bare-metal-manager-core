@@ -176,8 +176,7 @@ pub fn get_forge_root_ca_path(
            2. environment variable FORGE_ROOT_CA_PATH or
            3. add forge_root_ca_path in $HOME/.config/carbide_api_cli.json.
            4. a file existing at "/var/run/secrets/spiffe.io/ca.crt".
-           5. a file existing at "{}".
-           6. a file existing at "$REPO_ROOT/dev/certs/forge_developer_local_only_root_cert_pem"."###,
+           5. a file existing at "{}"###,
         tls_default::ROOT_CA
     )
 }

@@ -163,7 +163,7 @@ if [ "$FORGE_BOOTSTRAP_KIND" == "kube" ]; then
   export CLIENT_CERT="${CERT_PATH}/tls.crt"
   export CLIENT_KEY="${CERT_PATH}/tls.key"
 else
-  export ROOT_CA="./dev/certs/forge_developer_local_only_root_cert_pem"
+  export ROOT_CA="./dev/certs/forge_root.pem"
   export CLIENT_CERT="./dev/certs/server_identity.pem"
   export CLIENT_KEY="./dev/certs/server_identity.key"
 

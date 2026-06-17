@@ -38,7 +38,7 @@ override_target_port = 2000
 [tls]
 identity_pemfile_path = "/app/code/dev/certs/server_identity.pem"
 identity_keyfile_path = "/app/code/dev/certs/server_identity.key"
-root_cafile_path = "/app/code/dev/certs/forge_developer_local_only_root_cert_pem"
+root_cafile_path = "/app/code/dev/certs/forge_root.pem"
 
 [auth]
 permissive_mode = true

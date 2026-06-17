@@ -63,17 +63,6 @@ command = "cp"
 args = ["/tmp/bfb-dump/${BFB_NAME}", "preingestion.bfb"]
 cwd = "static/blobs/internal/aarch64"
 
-[tasks.stage-nvinit]
-condition = { env_not_set = ["SA_ENABLEMENT"] }
-# Note that libnss-exec is located here: https://gitlab-master.nvidia.com/ngcsecurity/nvssh/-/tree/master/ansible/roles/nvssh/files
-description = "Stages files required for nvssh into the mkosi image for installation in postinst script"
-script = '''
-  cp -R ${REPO_ROOT}/pxe/nvinit_setup mkosi.profiles/scout-oss-x86_64/mkosi.extra/build-output/
-  cp -R ${REPO_ROOT}/pxe/debs/libnss-exec_0.2.0-1_amd64.deb mkosi.profiles/scout-oss-x86_64/mkosi.extra/build-output/
-  cp -R ${REPO_ROOT}/pxe/nvinit_setup mkosi.profiles/scout-oss-aarch64/mkosi.extra/build-output/
-  cp -R ${REPO_ROOT}/pxe/debs/libnss-exec_0.2.0-1_arm64.deb mkosi.profiles/scout-oss-aarch64/mkosi.extra/build-output/
-'''
-
 [tasks.stage-disk_imaging-script]
 description = "Copies the disk_imaging.sh script to the qcow profile directories"
 script = '''
@@ -240,7 +229,6 @@ dependencies = [
   "mkosi-remove-zypper-from-debian-tools",
   "mkosi-generate-build-tmpdir",
   "copy-forge-scout-x86_64",
-  "copy-forge-prod-root-ca-x86_64",
   "stage-disk_imaging-script",
   "stage-scout-loader-rclocal",
   "stage-scout-update-check",
@@ -263,7 +251,6 @@ dependencies = [
   "mkdir-static",
   "mkosi-generate-build-tmpdir",
   "copy-forge-scout-x86_64",
-  "copy-forge-dev-root-ca-x86_64",
   "stage-disk_imaging-script",
   "stage-scout-loader-rclocal",
   "stage-scout-update-check",
@@ -285,7 +272,6 @@ dependencies = [
   "mkosi-remove-zypper-from-debian-tools",
   "mkosi-generate-build-tmpdir",
   "copy-forge-scout-aarch64",
-  "copy-forge-prod-root-ca-aarch64",
   "stage-disk_imaging-script",
   "stage-scout-loader-rclocal",
   "stage-scout-update-check",
@@ -308,7 +294,6 @@ dependencies = [
   "mkdir-static",
   "mkosi-generate-build-tmpdir",
   "copy-forge-scout-aarch64",
-  "copy-forge-dev-root-ca-aarch64",
   "stage-disk_imaging-script",
   "stage-scout-loader-rclocal",
   "stage-scout-update-check",
@@ -345,47 +330,9 @@ script = '''
   mkdir -p "${REPO_ROOT}/pxe/static/blobs/internal/apt/dists/focal/main/binary-amd64"
   mkdir -p "${REPO_ROOT}/pxe/mkosi.profiles/scout-oss-x86_64/mkosi.extra/build-output"
   mkdir -p "${REPO_ROOT}/pxe/mkosi.profiles/scout-oss-aarch64/mkosi.extra/build-output"
+  mkdir -p "${REPO_ROOT}/pxe/static/blobs/internal/cloud-init.d/host"
+  mkdir -p "${REPO_ROOT}/pxe/static/blobs/internal/cloud-init.d/dpu"
 '''
-
-[tasks.copy-forge-prod-root-ca-x86_64]
-condition = { env_not_set = ["SA_ENABLEMENT"] }
-category = "Copy Forge Root CA in CI"
-command = "cp"
-args = [
-  "-f",
-  "${FORGE_CA_PATH}",
-  "mkosi.profiles/scout-oss-x86_64/mkosi.extra/opt/forge/forge_root.pem",
-]
-
-[tasks.copy-forge-prod-root-ca-aarch64]
-condition = { env_not_set = ["SA_ENABLEMENT"] }
-category = "Copy Forge Root CA in CI"
-command = "cp"
-args = [
-  "-f",
-  "${FORGE_CA_PATH}",
-  "mkosi.profiles/scout-oss-aarch64/mkosi.extra/opt/forge/forge_root.pem",
-]
-
-[tasks.copy-forge-dev-root-ca-x86_64]
-condition = { env_not_set = ["SA_ENABLEMENT"] }
-category = "Copy Forge Root CA"
-command = "cp"
-args = [
-  "-f",
-  "${REPO_ROOT}/dev/certs/forge_developer_local_only_root_cert_pem",
-  "mkosi.profiles/scout-oss-x86_64/mkosi.extra/opt/forge/forge_root.pem",
-]
-
-[tasks.copy-forge-dev-root-ca-aarch64]
-condition = { env_not_set = ["SA_ENABLEMENT"] }
-category = "Copy Forge Root CA"
-command = "cp"
-args = [
-  "-f",
-  "${REPO_ROOT}/dev/certs/forge_developer_local_only_root_cert_pem",
-  "mkosi.profiles/scout-oss-aarch64/mkosi.extra/opt/forge/forge_root.pem",
-]
 
 [tasks.copy-forge-scout-x86_64]
 category = "Copy Forge Scout locally"
@@ -836,9 +783,6 @@ dependencies = [
   "bfb-hbn-export",
   "bfb-extract-ifconfig",
   "bfb-add-scout-to-bfb-ci",
-  "bfb-add-debs-to-bfb",
-  "bfb-add-nvinit-setup-to-bfb",
-  "bfb-add-prod-forge-root-ca-to-bfb",
   "mkdir-hbn-folder-in-bfb",
   "download-hbn-installer-to-bfb",
   "mv-hbn-configs-to-bfb",
@@ -868,9 +812,6 @@ dependencies = [
   "bfb-hbn-export",
   "bfb-extract-ifconfig",
   "bfb-add-scout-to-bfb-ci",
-  "bfb-add-debs-to-bfb",
-  "bfb-add-nvinit-setup-to-bfb",
-  "bfb-add-prod-forge-root-ca-to-bfb",
   "mkdir-hbn-folder-in-bfb",
   "download-hbn-installer-to-bfb",
   "mv-hbn-configs-to-bfb",
@@ -902,9 +843,6 @@ dependencies = [
   "bfb-hbn-export",
   "bfb-extract-ifconfig",
   "bfb-add-scout-to-bfb",
-  "bfb-add-debs-to-bfb",
-  "bfb-add-nvinit-setup-to-bfb",
-  "bfb-add-dev-forge-root-ca-to-bfb",
   "mkdir-hbn-folder-in-bfb",
   "download-hbn-installer-to-bfb",
   "mv-hbn-configs-to-bfb",
@@ -995,59 +933,6 @@ description = "Extract ifconfig from Ubuntu tar"
 command = "tar"
 args = ["xJf", "ubuntu/image.tar.xz", "./usr/sbin/ifconfig"]
 cwd = "${BUILD_LOCATION}"
-
-[tasks.bfb-add-prod-forge-root-ca-to-bfb]
-condition = { env_not_set = ["SA_ENABLEMENT"] }
-category = "iPXE Kernel"
-description = "Add the Forge Root CA to the BFB"
-command = "cp"
-args = ["${FORGE_CA_PATH}", "${BUILD_LOCATION}/forge_root.pem"]
-
-[tasks.bfb-add-dev-forge-root-ca-to-bfb]
-condition = { env_not_set = ["SA_ENABLEMENT"] }
-category = "iPXE Kernel"
-description = "Add the Forge Root CA to the BFB"
-command = "cp"
-args = [
-  "${REPO_ROOT}/dev/certs/forge_developer_local_only_root_cert_pem",
-  "${BUILD_LOCATION}/forge_root.pem",
-]
-
-[tasks.cleanup-old-debs]
-category = "iPXE Kernel"
-description = "Remove all the old debs in the target folder"
-script = '''
-  find "${REPO_ROOT}/pxe/debs" -type f -not \( -name libnss-exec_0.2.0-1_*.deb -o -name .gitkeep \) -delete
-'''
-
-[tasks.download-debs-for-bfb]
-category = "iPXE Kernel"
-description = "Wget the debs to nvinit_setup"
-command = "wget"
-args = [
-  "-i",
-  "${REPO_ROOT}/pxe/wget_deb_urls",
-  "--directory-prefix=${REPO_ROOT}/pxe/debs",
-]
-cwd = "${REPO_ROOT}/pxe"
-dependencies = ["cleanup-old-debs"]
-
-[tasks.bfb-add-debs-to-bfb]
-category = "iPXE Kernel"
-description = "Add debs folder to the BFB"
-script = '''
-  mkdir -p "${BUILD_LOCATION}/debs/"
-  cp ${REPO_ROOT}/pxe/debs/*arm64.deb "${BUILD_LOCATION}/debs/"
-  ls "${BUILD_LOCATION}/debs/"
-'''
-dependencies = ["download-debs-for-bfb"]
-
-[tasks.bfb-add-nvinit-setup-to-bfb]
-condition = { env_not_set = ["SA_ENABLEMENT"] }
-category = "iPXE Kernel"
-description = "Add nvinit_setup folder to the BFB"
-command = "cp"
-args = ["-R", "${REPO_ROOT}/pxe/nvinit_setup", "${BUILD_LOCATION}"]
 
 [tasks.bfb-add-scout-to-bfb-ci]
 category = "iPXE Kernel"

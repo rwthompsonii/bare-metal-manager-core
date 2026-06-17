@@ -16,7 +16,9 @@
  */
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::fs;
 
 use axum::Router;
 use axum::extract::State;
@@ -25,7 +27,7 @@ use axum::routing::get;
 use axum_template::TemplateEngine;
 use base64::Engine as _;
 use carbide_host_support::agent_config;
-use carbide_uuid::machine::MachineInterfaceId;
+use carbide_uuid::machine::{MachineId, MachineInterfaceId};
 use rpc::forge;
 use rpc::forge::PxeDomain;
 
@@ -65,8 +67,52 @@ fn print_and_generate_generic_error(error: String) -> (String, HashMap<String, S
     ("error".to_string(), template_data) // Send a generic error back
 }
 
+/// in the OK path returns either an Empty vec if no files are found, or a vec of tuples with (basename, url),
+/// or an Error.
+async fn get_cloud_init_urls(
+    custom_cloud_init_includes_directory: &str,
+    server_name: &str,
+    web_root: &str,
+) -> Result<Option<Vec<(String, String)>>, Box<dyn std::error::Error>> {
+    let dir_path = Path::new(custom_cloud_init_includes_directory);
+
+    let mut dir_entries = fs::read_dir(dir_path).await?;
+    let mut entries: Vec<(String, PathBuf)> = Vec::new();
+
+    while let Some(entry) = dir_entries.next_entry().await? {
+        let path = entry.path();
+        if path.is_file() {
+            if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                entries.push((name.to_string(), path));
+            }
+        }
+    }
+
+    if entries.is_empty() {
+        return Ok(None);
+    }
+
+    // Sort by filename (the .0 element)
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let base_url = format!(
+        "{}/{}",
+        server_name.trim_matches('/'),
+        web_root.trim_matches('/')
+    );
+
+    Ok(Some(
+        entries
+            .into_iter()
+            .map(|(name, _path)| {
+                let url = format!("{}/{}", base_url, name);
+                (name, url)
+            })
+            .collect(),
+    ))
+}
 #[allow(clippy::too_many_arguments)]
-fn user_data_handler(
+async fn user_data_handler(
     machine_interface_id: MachineInterfaceId,
     machine_interface: forge::MachineInterface,
     domain: PxeDomain,
@@ -108,7 +154,7 @@ fn user_data_handler(
     );
     context.insert(
         "pxe_url".to_string(),
-        pxe_url_override.unwrap_or(config.pxe_url),
+        pxe_url_override.unwrap_or(config.pxe_url.clone()),
     );
     context.insert(
         "forge_agent_config_b64".to_string(),
@@ -197,6 +243,96 @@ fn user_data_handler(
         );
     }
 
+    let custom_cloud_init_includes_directory = std::env::var("CUSTOM_CLOUD_INCLUDE_DIR")
+        .unwrap_or("/forge-boot-artifacts/blobs/internal/cloud-init.d/dpu/".to_string());
+    let custom_cloud_init_web_root = std::env::var("CUSTOM_CLOUD_INIT_WEB_ROOT")
+        .unwrap_or("public/blobs/internal/cloud-init.d/dpu/".to_string());
+
+    // Define the staging path on the DPU filesystem
+    let staging_dir = "/opt/forge/custom-cloud-init.d/";
+
+    let (download_block, execute_block) = get_cloud_init_urls(
+        custom_cloud_init_includes_directory.as_str(),
+        config.pxe_url.as_str(),
+        custom_cloud_init_web_root.as_str(),
+    )
+        .await
+        .map_err(|err| eprintln!("error reading custom cloud init files: {err:?}"))
+        .unwrap_or_default()
+        .map(|pairs| {
+            let download_cmds = pairs.iter()
+                .map(|(name, url)| {
+                    format!("curl -L --retry 5 --retry-all-errors -v -o /mnt{}{} {}", staging_dir, name, url)
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            let downloads = format!(
+                "\n# Start External Snippet Injection\nmkdir -p /mnt{}\n{}\n# End External Snippet Injection\n",
+                staging_dir, download_cmds
+            );
+
+            //TODO: think about putting the execute lines into an `include!` maybe? -- it would still have to be run through a `format!` macro, but maybe that's cleaner?
+            let execute_lines = vec![
+                "# --- Start Cloud-Init Snippet Execution ---".to_string(),
+                "CLOUD_DIR=\"/var/lib/cloud\"".to_string(),
+                "BACKUP_DIR=\"/var/lib/cloud.original\"".to_string(),
+                "FORGE_CFG=\"/etc/cloud/cloud.cfg.d/99-forge-snippet.cfg\"".to_string(),
+                "".to_string(),
+                "# 1. Create a Time Capsule of the original state".to_string(),
+                "if [ ! -d \"$BACKUP_DIR\" ]; then cp -rp \"$CLOUD_DIR\" \"$BACKUP_DIR\"; fi".to_string(),
+                "".to_string(),
+                format!("if [ -d \"{staging_dir}\" ]; then"),
+                format!("    for snippet in {staging_dir}*; do"),
+                "        [ -e \"$snippet\" ] || continue".to_string(),
+                "        echo \"Processing arbitrary snippet: $snippet\"".to_string(),
+                "".to_string(),
+                "        # 2. Infiltrate global config and wipe active instance memory".to_string(),
+                "        cp \"$snippet\" \"$FORGE_CFG\"".to_string(),
+                "        rm -rf \"${CLOUD_DIR}/instance\" \"${CLOUD_DIR}/instances\" \"${CLOUD_DIR}/data\"".to_string(),
+                "".to_string(),
+                "        # 3. Chained execution: stop immediately if any stage fails".to_string(),
+                "        (".to_string(),
+                "            ip vrf exec mgmt cloud-init init --local && \\".to_string(),
+                "            ip vrf exec mgmt cloud-init modules --mode config && \\".to_string(),
+                "            ip vrf exec mgmt cloud-init modules --mode final".to_string(),
+                "        ) || echo \"ERROR: Cloud-init execution failed for $snippet. Skipping to cleanup.\"".to_string(),
+                "".to_string(),
+                "        # 4. Clean up the injection point for the next loop iteration".to_string(),
+                "        rm -f \"$FORGE_CFG\"".to_string(),
+                "    done".to_string(),
+                "fi".to_string(),
+                "".to_string(),
+                "# 5. Restore the 'Time Capsule' so the DPU state is preserved".to_string(),
+                "echo \"Restoring original cloud-init state...\"".to_string(),
+                "rm -rf \"$CLOUD_DIR\" && mv \"$BACKUP_DIR\" \"$CLOUD_DIR\"".to_string(),
+                "# --- End Cloud-Init Snippet Execution ---".to_string(),
+            ];
+
+            // all of the above is being inserted directly into existing YAML,
+            // so it has to be indented exactly where it needs to go or it's not valid YAML.
+            // aren't whitespace sensitive grammars great?
+            let indent_size = 6;
+            let execute = execute_lines
+                .iter()
+                .enumerate()
+                .map(|(i, line)| {
+                    if i == 0 || line.is_empty() {
+                        line.to_string()
+                    } else {
+                        format!("{:indent$}{}", "", line, indent = indent_size)
+                    }
+                })
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            (downloads, execute)
+        })
+        .unwrap_or((String::new(), String::new()));
+
+    context.insert("custom_cloud_init_downloads".to_string(), download_block);
+    context.insert("custom_cloud_init_execute".to_string(), execute_block);
+
     ("user-data".to_string(), context)
 }
 
@@ -216,22 +352,25 @@ pub async fn user_data(machine: Machine, state: State<AppState>) -> impl IntoRes
                 discovery_instructions.domain,
             ) {
                 (Some(interface), Some(domain)) => match interface.id {
-                    Some(machine_interface_id) => user_data_handler(
-                        machine_interface_id,
-                        interface,
-                        domain,
-                        discovery_instructions.hbn_reps,
-                        discovery_instructions.hbn_sfs,
-                        discovery_instructions.num_of_vfs,
-                        discovery_instructions.vf_intercept_bridge_name,
-                        discovery_instructions.host_intercept_bridge_name,
-                        discovery_instructions.host_intercept_bridge_port,
-                        discovery_instructions.vf_intercept_bridge_port,
-                        discovery_instructions.vf_intercept_bridge_sf,
-                        machine.instructions.api_url_override,
-                        machine.instructions.pxe_url_override,
-                        state.clone(),
-                    ),
+                    Some(machine_interface_id) => {
+                        user_data_handler(
+                            machine_interface_id,
+                            interface,
+                            domain,
+                            discovery_instructions.hbn_reps,
+                            discovery_instructions.hbn_sfs,
+                            discovery_instructions.num_of_vfs,
+                            discovery_instructions.vf_intercept_bridge_name,
+                            discovery_instructions.host_intercept_bridge_name,
+                            discovery_instructions.host_intercept_bridge_port,
+                            discovery_instructions.vf_intercept_bridge_port,
+                            discovery_instructions.vf_intercept_bridge_sf,
+                            machine.instructions.api_url_override,
+                            machine.instructions.pxe_url_override,
+                            state.clone(),
+                        )
+                        .await
+                    }
                     None => print_and_generate_generic_error(format!(
                         "The interface ID should not be null: {interface:?}"
                     )),
@@ -241,14 +380,27 @@ pub async fn user_data(machine: Machine, state: State<AppState>) -> impl IntoRes
                 )),
             }
         }
-        // discovery_instructions can not be None for a non-assigned machine.
-        // This means that the machine is assigned to tenant.
-        // custom_cloud_init None means user has not configured any user-data. Send a empty
-        // response.
         (None, None) => {
-            let mut template_data: HashMap<String, String> = HashMap::new();
-            template_data.insert("user_data".to_string(), "{}".to_string());
-            ("user-data-assigned".to_string(), template_data)
+            // there are two options here
+            // 1) this is an allocated instance without custom cloud init, and we should respond with an empty user-data
+            // 2) this is the discovery OS on an unallocated instance, and we should respond with that template
+
+            // determine which by trying to parse the instance id in the metadata given to use as a machine id,
+            // which is what we will be given for the discovery OS from the api server.
+
+            //TODO: this code was written under teh assumption that hosts were calling this API, and I subsequently realized they are not.  I have to write the routes and the client code for them to even call home first.
+            if let Some(_machine_id) = machine
+                .instructions
+                .metadata
+                .map(|m| m.instance_id.parse::<MachineId>().ok())
+                .flatten()
+            {
+                todo!("discovery os cloud init template required");
+            } else {
+                let mut template_data: HashMap<String, String> = HashMap::new();
+                template_data.insert("user_data".to_string(), "{}".to_string());
+                ("user-data-assigned".to_string(), template_data)
+            }
         }
     };
 
